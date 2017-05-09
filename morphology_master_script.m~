@@ -1,0 +1,165 @@
+% Master script to do morphology analysis
+%% Load in LNs .SWC files to be used
+clear
+skeletonDir = '/home/asa/2017-02-03_inflated_skeletons/';
+lnNums = [1, 2, 3, 6, 7, 8, 9, 10, 16, 18, 21, 23, 24, 25, 26, 27, 28, 29,...
+    30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42];
+% lnNums = [25, 26, 27, 28, 29];
+nSkeles = length(lnNums);
+trees = load_lns(lnNums, skeletonDir);
+
+%% Group trees by cell type
+% Default is that each neuron is the sole member of its type.
+for iSkele = 1:nSkeles
+    treesByType{iSkele} = trees(iSkele);
+end
+
+%% Get stats from built in TREES 'stats_tree' fn
+stats = stats_tree(treesByType);
+stats.dstats = rmfield(stats.dstats, 'peucl');
+
+% Set some variables
+dstatNames = fieldnames(stats.dstats);
+nDstats =  length(dstatNames);
+nBins = 20;
+dstatHist = zeros(nBins, nSkeles, nDstats);
+dstatRange = zeros(2, nSkeles, nDstats);
+dstatBinLocs = zeros(nBins, nDstats);
+
+gstatNames = fieldnames(stats.gstats);
+nGstats = length(gstatNames);
+gstats = zeros(nSkeles, nGstats);
+
+% Find range for each distribution
+for iSkele = 1:nSkeles
+    for iStat = 1:nDstats
+        dstatRange(1, iSkele, iStat) = ...
+            min(stats.dstats(iSkele).(dstatNames{iStat}){1});
+        dstatRange(2, iSkele, iStat) = ...
+            max(stats.dstats(iSkele).(dstatNames{iStat}){1});
+    end
+end
+tmpMin = squeeze(min(dstatRange(1, :, :)));
+tmpMax = squeeze(max(dstatRange(2, :, :)));
+dstatRange = [floor(tmpMin), ceil(tmpMax)];
+
+% Get histograms for dstats
+for iStat = 1:nDstats
+    dstatBinLocs(:, iStat) = dstatRange(iStat, 1):...
+                             (dstatRange(iStat, 2) - dstatRange(iStat, 1)) / 19: ...
+                             dstatRange(iStat, 2);
+end
+for iSkele = 1:nSkeles
+    for iStat = 1:nDstats
+        [dstatHist(:,  iSkele, iStat)] = ...
+            hist(stats.dstats(iSkele).(dstatNames{iStat}){1}, dstatBinLocs(:, iStat));
+    end
+end
+
+% Now get gstats into a matrix
+for iSkele = 1:nSkeles
+    gstats(iSkele, :) = structfun(@(x) (x), stats.gstats(iSkele));
+end
+
+% Remove unwanted stats. Some of the stats that are given are not
+% necessarily relevant.
+unwantedGstats = [2, 4, 10:14];
+% unwantedGstats = [2, 4, 8];
+gstats(:, unwantedGstats) = [];
+gstatNames(unwantedGstats) = [];
+nGstats = length(gstatNames);
+
+%% Plot raw values (of all trees) for each global stat
+nSubPlots = ceil(sqrt(nGstats));
+
+figure
+colormap(parula)
+for iStat = 1:nGstats
+    subplot(nSubPlots, nSubPlots, iStat)
+    bar(gstats(:, iStat));
+    title(gstatNames{iStat})
+end
+
+%% Plot stat distributions
+nSubPlots = ceil(sqrt(nDstats));
+figure
+set(gcf, 'DefaultAxesColorOrder',co) 
+for iSkele = 1:nSkeles
+    for iStat = 1:nDstats
+        subplot(nSubPlots, nSubPlots, iStat)
+        title(dstatNames{iStat})
+        plot(dstatBinLocs(:,iStat), dstatHist(:,:,iStat), 'linewidth', 2, 'color', [0.8 0.8 0.8])
+        hold on
+        plot(dstatBinLocs(:,iStat), dstatHist(:,iSkele,iStat), 'linewidth', 2)
+    end
+    pause
+end
+
+%% Load LN images (z-projections)
+imgPath = '/home/asa/2017-02-08_LN_skeleton_pics/';
+% lnPics = zeros(1464,2492, 4, nSkeles);
+
+for iSkele = 1:nSkeles
+    if any(lnNums(iSkele) == [21, 25, 35])
+        lnPics(:,:,:,iSkele) = imread([imgPath '2017-02-08_08bad_LN' ...
+                                       num2str(lnNums(iSkele)) '.tif']);
+    else
+        lnPics(:,:,:,iSkele) = imread([imgPath '2017-02-08_364eb_LN' ...
+                                       num2str(lnNums(iSkele)) '.tif']);
+    end
+end
+
+%% Crop images
+lnPics(:, [1:399, 2050:end], : , :) = [];
+% lnPics(:,:,4,:) = [];
+%% Plot combination figure
+% Set figure settings
+close all
+figure
+set(gcf, 'DefaultAxesColorOrder',co)
+nXSubPlots = 7;
+nYSubPlots = 5;
+subplot = @(m,n,p) subtightplot (m, n, p, [0.03 0.01], [0.05 0.03], [0.03 0.03]);
+h = subplot(nXSubPlots, nYSubPlots, 1)
+
+% Write some subplot labels
+dstatsFullNames = {'Branch order', 'Path length (um)', 'Branch angle (rad)', 'Branch length (um)'};
+gstatsFullNames = {'Total path length (um)', '# branch points', 'max. branch order',...
+                   'mean branch angle (rad)', 'mean branch length (um)', ...
+                    'mean path length (um)', 'mean. branch order'}
+picRegion = 1:(nXSubPlots * (nYSubPlots - 1));
+picRegion(nXSubPlots:nXSubPlots:end) = [];
+pause
+for iSkele = 1:nSkeles
+    subplot(nYSubPlots,nXSubPlots,picRegion)
+    imshow(lnPics(:,:,1:3,iSkele))
+    title(['LN ' num2str(lnNums(iSkele))])
+    
+    for iStat = 1:nDstats
+        subplot(nYSubPlots,nXSubPlots,nXSubPlots * iStat)
+        plot(dstatBinLocs(:,iStat), dstatHist(:,:,iStat), 'linewidth', 2, 'color', [0.8 0.8 0.8])
+        hold on
+        plot(dstatBinLocs(:,iStat), dstatHist(:,iSkele,iStat), 'linewidth', 2)
+        %     title('Branch order')
+        title(dstatsFullNames{iStat})
+        set(gca, 'box', 'off')
+    end
+    for iStat = 1:nGstats
+        subplot(nYSubPlots,nXSubPlots,((nYSubPlots-1) * nXSubPlots) + iStat)
+        bar(gstats(:, iStat));
+        hold on
+        myGstats = zeros(nSkeles, nGstats);
+        myGstats(iSkele,:) = gstats(iSkele,:);
+        bar(myGstats(:, iStat), 'r');
+        title(gstatsFullNames{iStat})
+        xTickLabel = [];
+        set(gca, 'box', 'off')
+    end
+    
+%     pause
+fileName = ['2017_02_08_LN' num2str(lnNums(iSkele)) '_morphology_analysis'], 'pdf');
+img = getframe(gcf);
+imwrite(img.cdata, [FileName, '.png']);
+pause
+end
+    
