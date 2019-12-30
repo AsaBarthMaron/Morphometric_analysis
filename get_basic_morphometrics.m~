@@ -1,7 +1,0 @@
-maxTreeSize = zeros(nSkeles, 1);
-for iSkele = 1:nSkeles
-    maxTreeSize(iSkele) = length(trees{iSkele});
-end
-maxTreeSize = max(maxTreeSize);
-
-pathLengths = zeros(maxTreeSize, nSkeles);
